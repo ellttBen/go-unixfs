@@ -172,12 +172,6 @@ func (dr *dagReader) CtxReadFull(ctx context.Context, out []byte) (n int, err er
 	err = dr.dagWalker.Iterate(func(visitedNode ipld.NavigableNode) error {
 		node := ipld.ExtractIPLDNode(visitedNode)
 
-		// Skip internal nodes, they shouldn't have any file data
-		// (see the `balanced` package for more details).
-		if len(node.Links()) > 0 {
-			return nil
-		}
-
 		err = dr.saveNodeData(node)
 		if err != nil {
 			return err
@@ -195,6 +189,17 @@ func (dr *dagReader) CtxReadFull(ctx context.Context, out []byte) (n int, err er
 			// Output buffer full, no need to keep traversing the DAG,
 			// signal the `Walker` to pause the iteration.
 			dr.dagWalker.Pause()
+
+		} else if len(node.Links()) > 0 {
+			if len(node.Links()[0].Name) != 0 {
+				// This indicates that the node contains only named links,
+				// because empty string links always come before named ones.
+				// Incidentally, this means that the node's data is contained within
+				// its data attribute, which has already been read at this point.
+				// Therefore, we return an EOF signal.
+
+				return ipld.EndOfDag
+			}
 		}
 
 		return nil
